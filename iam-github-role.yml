@@ -1,0 +1,46 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'IAM Role for GitHub Actions (Temporary Admin Version for Debugging)'
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Description: "Your GitHub organization or username."
+  GitHubRepo:
+    Type: String
+    Description: "Your GitHub repository name."
+
+Resources:
+  # OIDC провайдер для GitHub. Создается один раз на аккаунт.
+  GitHubOIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  # Сама роль, теперь с админскими правами
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'GitHubActionsRole-${GitHubRepo}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOIDCProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringLike:
+                "token.actions.githubusercontent.com:sub": !Sub "repo:${GitHubOrg}/${GitHubRepo}:ref:refs/heads/main"
+      # ВНИМАНИЕ: ВРЕМЕННОЕ РЕШЕНИЕ! ИСПОЛЬЗУЕМ ГОТОВУЮ ПОЛИТИКУ АДМИНИСТРАТОРА.
+      # ЭТО НЕБЕЗОПАСНО ДЛЯ ПРОДА, НО ПОМОЖЕТ НАМ ИЗОЛИРОВАТЬ ПРОБЛЕМУ.
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AdministratorAccess'
+
+Outputs:
+  GitHubActionsRoleArn:
+    Description: "ARN of the IAM role for GitHub Actions"
+    Value: !GetAtt GitHubActionsRole.Arn

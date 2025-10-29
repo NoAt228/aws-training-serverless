@@ -1,0 +1,88 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Network Stack: VPC, Public/Private Subnets, NAT GW, VPC Endpoints. Production-ready.'
+
+Resources:
+  # --- VPC ---
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC'
+
+  # --- Subnets (в двух зонах доступности для отказоустойчивости) ---
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties: { VpcId: !Ref VPC, CidrBlock: 10.0.1.0/24, AvailabilityZone: !Select [ 0, !GetAZs '' ], MapPublicIpOnLaunch: true, Tags: [{Key: Name, Value: !Sub '${AWS::StackName}-PublicSubnet1'}] }
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties: { VpcId: !Ref VPC, CidrBlock: 10.0.2.0/24, AvailabilityZone: !Select [ 1, !GetAZs '' ], MapPublicIpOnLaunch: true, Tags: [{Key: Name, Value: !Sub '${AWS::StackName}-PublicSubnet2'}] }
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties: { VpcId: !Ref VPC, CidrBlock: 10.0.101.0/24, AvailabilityZone: !Select [ 0, !GetAZs '' ], Tags: [{Key: Name, Value: !Sub '${AWS::StackName}-PrivateSubnet1'}] }
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties: { VpcId: !Ref VPC, CidrBlock: 10.0.102.0/24, AvailabilityZone: !Select [ 1, !GetAZs '' ], Tags: [{Key: Name, Value: !Sub '${AWS::StackName}-PrivateSubnet2'}] }
+
+  # --- Internet Gateway (для доступа в интернет из публичных подсетей) ---
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties: { Tags: [{Key: Name, Value: !Sub '${AWS::StackName}-IGW'}] }
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: { VpcId: !Ref VPC, InternetGatewayId: !Ref InternetGateway }
+
+  # --- NAT Gateway (для доступа в интернет из приватных подсетей) ---
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    Properties: { Domain: vpc }
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties: { AllocationId: !GetAtt NatGatewayEIP.AllocationId, SubnetId: !Ref PublicSubnet1 }
+
+  # --- Route Tables ---
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: { VpcId: !Ref VPC, Tags: [{Key: Name, Value: !Sub '${AWS::StackName}-PublicRouteTable'}] }
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties: { RouteTableId: !Ref PublicRouteTable, DestinationCidrBlock: 0.0.0.0/0, GatewayId: !Ref InternetGateway }
+  PublicSubnet1RouteTableAssociation: { Type: AWS::EC2::SubnetRouteTableAssociation, Properties: { SubnetId: !Ref PublicSubnet1, RouteTableId: !Ref PublicRouteTable } }
+  PublicSubnet2RouteTableAssociation: { Type: AWS::EC2::SubnetRouteTableAssociation, Properties: { SubnetId: !Ref PublicSubnet2, RouteTableId: !Ref PublicRouteTable } }
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: { VpcId: !Ref VPC, Tags: [{Key: Name, Value: !Sub '${AWS::StackName}-PrivateRouteTable'}] }
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties: { RouteTableId: !Ref PrivateRouteTable, DestinationCidrBlock: 0.0.0.0/0, NatGatewayId: !Ref NatGateway }
+  PrivateSubnet1RouteTableAssociation: { Type: AWS::EC2::SubnetRouteTableAssociation, Properties: { SubnetId: !Ref PrivateSubnet1, RouteTableId: !Ref PrivateRouteTable } }
+  PrivateSubnet2RouteTableAssociation: { Type: AWS::EC2::SubnetRouteTableAssociation, Properties: { SubnetId: !Ref PrivateSubnet2, RouteTableId: !Ref PrivateRouteTable } }
+
+  # --- VPC Endpoints (ключ к успеху!) ---
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      RouteTableIds: [!Ref PrivateRouteTable]
+  DynamoDBGatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.dynamodb'
+      RouteTableIds: [!Ref PrivateRouteTable]
+
+Outputs:
+  VpcId:
+    Description: "ID of the VPC"
+    Value: !Ref VPC
+    Export: { Name: !Sub "${AWS::StackName}-VpcId" }
+  PrivateSubnetIds:
+    Description: "Comma-delimited list of private subnet IDs"
+    Value: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2 ] ]
+    Export: { Name: !Sub "${AWS::StackName}-PrivateSubnetIds" }

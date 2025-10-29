@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'Storage Stack: S3 bucket for uploads and DynamoDB table for metadata.'
+
+Resources:
+  ImageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      # Блокируем весь публичный доступ. Безопасность — по умолчанию.
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      # Включаем версионирование на случай, если понадобится откатить удалённый объект
+      VersioningConfiguration:
+        Status: Enabled
+
+  MetadataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "imageName"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "imageName"
+          KeyType: "HASH"
+      BillingMode: PAY_PER_REQUEST # Идеально для serverless с непредсказуемой нагрузкой
+      # Включаем восстановление на любой момент времени за последние 35 дней. Обязательно для прода.
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+Outputs:
+  ImageBucketName:
+    Description: "Name of the S3 bucket for image uploads"
+    Value: !Ref ImageBucket
+    Export: { Name: !Sub "${AWS::StackName}-ImageBucketName" }
+  MetadataTableName:
+    Description: "Name of the DynamoDB table for metadata"
+    Value: !Ref MetadataTable
+    Export: { Name: !Sub "${AWS::StackName}-MetadataTableName" }
