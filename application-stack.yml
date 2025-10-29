@@ -1,0 +1,84 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'Application Stack: VPC-enabled Lambda, API Gateway, DLQ, and IAM Roles.'
+
+Parameters:
+  NetworkStackName:
+    Type: String
+    Description: "Name of the network stack (e.g., my-app-network)."
+  StorageStackName:
+    Type: String
+    Description: "Name of the storage stack (e.g., my-app-storage)."
+
+Resources:
+  # Явно определяем API Gateway
+  MyApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      TracingEnabled: true
+      StageName: Prod
+      OpenApiVersion: '3.0.1'
+
+  ImageEventsDLQ:
+    Type: AWS::SQS::Queue
+
+  MetadataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: app.lambda_handler
+      Runtime: python3.9
+      Timeout: 15
+      Tracing: Active
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt ImageEventsDLQ.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !ImportValue
+            Fn::Sub: "${StorageStackName}-MetadataTableName"
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds: !Split [ ",", !ImportValue { Fn::Sub: "${NetworkStackName}-PrivateSubnetIds" } ]
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !ImportValue
+              Fn::Sub: "${StorageStackName}-ImageBucketName"
+        - DynamoDBCrudPolicy:
+            TableName: !ImportValue
+              Fn::Sub: "${StorageStackName}-MetadataTableName"
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt ImageEventsDLQ.QueueName
+        - VPCAccessPolicy: {}
+      Events:
+        GetMetadata:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /images/{imageName}
+            Method: get
+
+  MetadataFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${MetadataFunction}"
+      RetentionInDays: 14
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Lambda Security Group"
+      VpcId: !ImportValue { Fn::Sub: "${NetworkStackName}-VpcId" }
+
+Outputs:
+  ApiEndpoint:
+    Description: "URL of the API endpoint"
+    Value: !Sub "https://${MyApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/images"
+  MetadataFunctionName:
+    Value: !Ref MetadataFunction
+    Export: { Name: !Sub "${AWS::StackName}-FunctionName" }
+  ImageEventsDLQName:
+    Description: "Name of the SQS Dead Letter Queue"
+    Value: !GetAtt ImageEventsDLQ.QueueName
+    Export: { Name: !Sub "${AWS::StackName}-ImageEventsDLQName" }

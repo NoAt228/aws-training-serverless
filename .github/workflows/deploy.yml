@@ -1,0 +1,46 @@
+name: Deploy SAM Application
+
+on:
+  push:
+    branches:
+      - main # Запускать при пуше в ветку main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::480241654314:role/GitHubActionsRole-aws-training-serverless
+          aws-region: eu-central-1
+
+      - name: SAM Build
+        run: sam build --use-container
+
+      - name: SAM Deploy
+        run: |
+          sam deploy \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --stack-name my-app-application \
+            --s3-bucket aws-sam-cli-managed-default-samclisourcebucket-xxxxxxxx \
+            --capabilities CAPABILITY_IAM \
+            --parameter-overrides \
+              NetworkStackName=my-app-network \
+              StorageStackName=my-app-storage
