@@ -39,7 +39,6 @@ jobs:
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
             --stack-name my-app-application \
-            --s3-bucket aws-sam-cli-managed-default-samclisourcebucket-xxxxxxxx \
             --capabilities CAPABILITY_IAM \
             --parameter-overrides \
               NetworkStackName=my-app-network \

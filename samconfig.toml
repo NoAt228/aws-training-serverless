@@ -2,7 +2,6 @@ version = 0.1
 
 [dev.deploy.parameters]
 stack_name = "my-app-application"
-resolve_s3 = true
 s3_prefix = "my-app-application"
 region = "eu-central-1"
 confirm_changeset = true
@@ -16,7 +15,6 @@ region = "eu-central-1"
 
 [default.deploy.parameters]
 stack_name = "my-app-application"
-resolve_s3 = true
 s3_prefix = "my-app-application"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
