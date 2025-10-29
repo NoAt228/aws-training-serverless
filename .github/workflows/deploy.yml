@@ -3,8 +3,7 @@ name: Deploy SAM Application
 on:
   push:
     branches:
-      - main # Запускать при пуше в ветку main
-
+      - main 
 jobs:
   deploy:
     runs-on: ubuntu-latest

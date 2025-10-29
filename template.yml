@@ -78,6 +78,9 @@ Outputs:
   MetadataFunctionName:
     Value: !Ref MetadataFunction
     Export: { Name: !Sub "${AWS::StackName}-FunctionName" }
+  MetadataFunctionArn:
+    Value: !GetAtt MetadataFunction.Arn
+    Export: { Name: !Sub "${AWS::StackName}-FunctionArn" }
   ImageEventsDLQName:
     Description: "Name of the SQS Dead Letter Queue"
     Value: !GetAtt ImageEventsDLQ.QueueName

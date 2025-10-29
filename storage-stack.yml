@@ -2,6 +2,12 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: 'Storage Stack: S3 bucket for uploads and DynamoDB table for metadata.'
 
+Parameters:
+  ApplicationStackName:
+    Type: String
+    Description: "Name of the application stack (e.g., my-app-application)."
+    Default: ""
+
 Resources:
   ImageBucket:
     Type: AWS::S3::Bucket
@@ -15,6 +21,13 @@ Resources:
       # Включаем версионирование на случай, если понадобится откатить удалённый объект
       VersioningConfiguration:
         Status: Enabled
+      # S3 Event Notification: вызывает Lambda при загрузке файла
+      NotificationConfiguration:
+        LambdaFunctionConfigurations:
+          - Event: "s3:ObjectCreated:*"
+            Function: !ImportValue
+              Fn::Sub: "${ApplicationStackName}-FunctionArn"
+    DependsOn: S3InvokeLambdaPermission
 
   MetadataTable:
     Type: AWS::DynamoDB::Table
@@ -29,6 +42,18 @@ Resources:
       # Включаем восстановление на любой момент времени за последние 35 дней. Обязательно для прода.
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
+
+  # Даём S3 права вызывать Lambda функцию
+  S3InvokeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Sub
+        - "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${FunctionName}"
+        - FunctionName: !ImportValue
+            Fn::Sub: "${ApplicationStackName}-FunctionName"
+      Action: "lambda:InvokeFunction"
+      Principal: "s3.amazonaws.com"
+      SourceArn: !GetAtt ImageBucket.Arn
 
 Outputs:
   ImageBucketName:
